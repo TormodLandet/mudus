@@ -1,0 +1,45 @@
+[project]
+name = "mudus"
+description = "Multi-User Disk USage scanner and reporter. Quickly figure out where a specific user has left files on a shared disk by showing cumulative (recursive) directory sizes and letting the user drill down in a file-explorer like Textual TUI showing only their files."
+readme = "README.md"
+authors = [{name = "Tormod Landet", email = "tormod@landet.net"}]
+license = "apache-2.0"
+requires-python = ">=3.10"
+dependencies = [
+    "textual >= 5.0"
+]
+
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+]
+
+keywords = ["python", "storage", "hpc", "textual", "disk-space", "disk-usage", "textualize"]
+
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/TormodLandet/mudus"
+Source = "https://github.com/TormodLandet/mudus"
+
+[project.scripts]
+mudus = "mudus.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch]
+version.path = "mudus/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mudus"]
+only-packages = true
+
+[tool.ruff]
+line-length = 100
+
+[tool.black]
+line-length = 100
+target-version = ['py311']

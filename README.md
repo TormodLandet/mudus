@@ -34,7 +34,7 @@ mudus scan --scan-dir /shared/dir_a --scan-dir /shared/dir_b --non-interactive
 
 Interactive example:
 
-![Screenshot the `mudus scan` TUI](/docs/figures/MudusScanApp.svg)
+![Screenshot the `mudus scan` TUI](https://raw.githubusercontent.com/TormodLandet/mudus/main/docs/figures/MudusScanApp.svg)
 
 
 ### Viewing the disk-usage database
@@ -43,7 +43,13 @@ Use the `mudus` command (short for `mudus view`) to show your disk usage and dri
 
 Example of the Textual-based TUI:
 
-![Screenshot the `mudus view` TUI](/docs/figures/MudusViewApp.svg)
+![Screenshot the `mudus view` TUI](https://raw.githubusercontent.com/TormodLandet/mudus/main/docs/figures/MudusViewApp.svg)
+
+
+## Installation
+
+You can install and run mudus directly with `pipx mudus` or `uvx mudus` if you have `pipx` or `uv` installed.
+You can also `pip install mudus` and launch it as `python -m mudus`.
 
 
 ## Alternatives

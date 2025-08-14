@@ -2,6 +2,7 @@ from textual.app import App
 from textual.screen import Screen
 from textual.widgets import Header, Footer
 
+from mudus import version
 from mudus.database import MudusDatabase
 from .mudus_view_table import MudusTable
 
@@ -17,7 +18,7 @@ class MudusViewScreen(Screen):
         return super().__init__()
 
     def compose(self):
-        self.title = "MUDUS view TUI"
+        self.title = f"MUDUS v.{version}"
         self.sub_title = "Multi-User system Disk USage"
 
         yield Header(icon="M")

@@ -2,6 +2,7 @@ from textual.app import App
 from textual.screen import Screen
 from textual.widgets import Header, Footer
 
+from mudus import version
 from mudus.database import MudusDatabase
 from .mudus_scan_status import MudusScanStatus
 
@@ -16,7 +17,7 @@ class MudusScanScreen(Screen):
         return super().__init__()
 
     def compose(self):
-        self.title = "MUDUS Scan TUI"
+        self.title = f"MUDUS Scan v.{version}"
         self.sub_title = "Multi-User system Disk USage"
         yield Header(icon="M")
         yield MudusScanStatus(mudus_db=self.mudus_db)
