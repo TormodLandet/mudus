@@ -96,9 +96,6 @@ def test_top_level_dir(tmp_path: Path):
     assert dirsize.top_level_dir == str(test_dir)
 
 
-
-
-
 def make_test_dir(root_dir: Path):
     """
     Create a directory hierarchy for testing

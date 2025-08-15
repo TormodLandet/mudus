@@ -1,0 +1,33 @@
+name: CI with pytest
+
+# Run on all commits and once every week on Saturday at 08:00 UTC
+on:
+  push:
+    branches:
+      - '**'
+  schedule:
+    - cron: '0 8 * * 6'
+
+jobs:
+  install-and-test:
+    name: Install dependencies and run tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
+          python-version: 3.13
+          enable-cache: true
+
+      - name: Install dependencies with uv (auto-includes the "dev" group)
+        run: uv sync
+
+      - name: Run unit tests
+        run: uv run pytest -v tests/
+
+      - name: Build wheel file
+        run: uv build
