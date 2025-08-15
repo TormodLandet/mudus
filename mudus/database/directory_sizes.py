@@ -36,11 +36,30 @@ class DirectorySizes:
         """
         The total cumulative size of the top-level directory.
         """
-        return self.dir_sizes[self.top_level_dir]
+        return self.dir_sizes.get(self.top_level_dir, 0)
 
     @property
     def has_data(self) -> bool:
         return self.total_size > 0
+
+    def add(self, other: DirectorySizes):
+        """
+        Add data from other to this object
+        """
+        # Update our understanding of disk sizes
+        for path, size in other.dir_sizes.items():
+            self.dir_sizes[path] = self.dir_sizes.get(path, 0) + size
+
+        # Update our understanding of file counts
+        for path, num_files in other.num_files.items():
+            self.num_files[path] = self.num_files.get(path, 0) + num_files
+
+        # Update our understanding of child directories
+        for path, children in other.dir_children.items():
+            self.dir_children[path] = self.dir_children.get(path, set()).union(children)
+
+        # Top level directory may have changed
+        self.find_top_level_dir()
 
     def find_root_directory(self) -> str:
         """

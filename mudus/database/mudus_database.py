@@ -5,6 +5,7 @@ import datetime as dt
 import json
 import os
 
+from .lazy_loading import LazyLoadingDirectorySizes
 from .directory_sizes import DirectorySizes
 from .accumulate import accumulate_directory_sizes
 
@@ -41,7 +42,9 @@ class MudusDatabase:
         # STAGE 1: These data are non-cumulative
         self.scan_results: dict[tuple[int, int], list[tuple[str, int, int]]] = {}
         # STAGE 2: These data are cumulative per user and group
-        self.cumulative_results: dict[tuple[int, int], DirectorySizes] = {}
+        self.cumulative_results: dict[
+            tuple[int, int], DirectorySizes | LazyLoadingDirectorySizes
+        ] = {}
 
         self.scanning_start_time: dt.datetime
         self.accumulation_start_time: dt.datetime
@@ -59,7 +62,7 @@ class MudusDatabase:
             uid, gid = parse_uid_and_gid_from_filename(file.name)
             if uid is None or gid is None:
                 continue
-            self.cumulative_results[(uid, gid)] = DirectorySizes.from_file(file)
+            self.cumulative_results[(uid, gid)] = LazyLoadingDirectorySizes(file, uid, gid)
 
         # Load metadata about the scan
         metadata_file = self.db_directory / METADATA_FILE_NAME
@@ -108,6 +111,9 @@ class MudusDatabase:
 
         # Save the scan results (only cumulative results)
         for (uid, gid), dirsize in self.cumulative_results.items():
+            if isinstance(dirsize, LazyLoadingDirectorySizes):
+                raise ValueError("ERROR: cannot save a database that is not a fresh scan!")
+
             filename = result_storage_dir / f"cumulative_dir_sizes_for_uid_{uid}_gid_{gid}.json"
             try:
                 delete_file = True
@@ -168,7 +174,9 @@ class MudusDatabase:
         with open(self.db_directory / METADATA_FILE_NAME, "w") as f:
             json.dump(metadata, f)
 
-    def lookup_directory_sizes(self, uid: int, gid: int | Literal["all"]) -> DirectorySizes:
+    def lookup_directory_sizes(
+        self, uid: int, gid: int | Literal["all"]
+    ) -> tuple[DirectorySizes, str]:
         """
         Lookup the directory sizes for a given user ID and group ID.
         If gid is "all", return the sizes for all groups of the user.
@@ -186,22 +194,28 @@ class MudusDatabase:
         elif (uid, gid) in self.cumulative_results:
             gids = {gid}
         else:
-            return result
+            return result, "No data found"
 
         # Accumulate the directory sizes for all requested groups
+        loading_error = ""
         for gid in gids:
             dirsize = self.cumulative_results[(uid, gid)]
-            for path, size in dirsize.dir_sizes.items():
-                result.dir_sizes[path] = result.dir_sizes.get(path, 0) + size
-            for path, num_files in dirsize.num_files.items():
-                result.num_files[path] = result.num_files.get(path, 0) + num_files
-            for path, children in dirsize.dir_children.items():
-                result.dir_children[path] = result.dir_children.get(path, set()).union(children)
 
-        # Update the name of the top-level directory
-        result.find_top_level_dir()
+            # Handle lazy-loading
+            if isinstance(dirsize, LazyLoadingDirectorySizes):
+                dirsize2, reason_for_error = dirsize.load()
+                if dirsize2 is None:
+                    # Could not load directory sizes
+                    self.errors.append((dirsize.datafile, reason_for_error))
+                    loading_error += f"{reason_for_error}\n"
+                    continue
+                # Replace the lazy object with the loaded object
+                self.cumulative_results[(uid, gid)] = dirsize = dirsize2
 
-        return result
+            # Accumulate the directory sizes into a single result object
+            result.add(dirsize)
+
+        return result, loading_error
 
     def run_file_system_scan(self):
         """

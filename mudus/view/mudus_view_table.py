@@ -4,12 +4,13 @@ import pwd
 import grp
 
 from rich.text import Text
+from textual import work
 from textual.widget import Widget
 from textual.containers import Vertical
 from textual.widgets import DataTable, Label
 
 from mudus.database import MudusDatabase, DirectorySizes
-
+from .mudus_loading_indicator import MudusLoadingIndicator
 
 IdOrAll: TypeAlias = int | Literal["all"]
 
@@ -31,58 +32,79 @@ class MudusTable(Widget):
         self.group_id: IdOrAll = group_id
 
         if self.user_id != "all":
-            self.user_name = pwd.getpwuid(self.user_id).pw_name
+            try:
+                self.user_name = pwd.getpwuid(self.user_id).pw_name
+            except KeyError:
+                self.user_name = "**UNKNOWN USER**"
         else:
             self.user_name = "**ALL USERS**"
 
         if self.group_id != "all":
-            self.group_name = grp.getgrgid(self.group_id).gr_name
+            try:
+                self.group_name = grp.getgrgid(self.group_id).gr_name
+            except KeyError:
+                self.group_name = "**UNKNOWN GROUP**"
         else:
             self.group_name = "**ALL GROUPS**"
+
+        self.show_what_message: str = (
+            f"disk usage for user [bold]{self.user_name}[/] and group [bold]{self.group_name}[/]"
+        )
 
     def compose(self):
         yield Vertical(
             Label("", id="mudus_table_title"),
             Label("", id="mudus_db_message"),
+            MudusLoadingIndicator(f"Loading {self.show_what_message}"),
             DataTable(cursor_type="row", id="mudus_table"),
             Label("", id="mudus_debug"),
         )
-        self.call_later(self.show_disk_usage)
+        self.call_later(self.load_directory_sizes)
 
-    def get_directory_sizes(self) -> DirectorySizes:
-        dir_sizes = self.mudus_db.lookup_directory_sizes(uid=self.user_id, gid=self.group_id)
-        dir_sizes.find_top_level_dir()
+    def set_db_message(self, error: str = ""):
+        """
+        Update the label that contains the database status message
+        (by default it shows when the database was last updated)
+        """
+        msg = f"[dim italic]{self.mudus_db.message}[/]"
+        if error:
+            msg += f"\n[red][bold]Error:[/bold] {error}[/red]"
+        self.query_one("#mudus_db_message").update(Text.from_markup(msg))
 
-        if False:  # DEBUG
-            debug = f"TOP-level-dir: {dir_sizes.top_level_dir}"
-            for (uid, gid), ds in self.mudus_db.cumulative_results.items():
-                if uid == self.user_id:
-                    debug += f"\nNum dirs (UID {uid} GID {gid}): {len(ds.dir_sizes)}  - {ds.find_top_level_dir()}"
-                else:
-                    debug += f"\nOTHERdir (UID {uid} GID {gid}): {len(ds.dir_sizes)}  - {ds.find_top_level_dir()}"
+    @work(thread=True, exclusive=True, group="load_directory_sizes")
+    def load_directory_sizes(self) -> DirectorySizes:
+        """
+        Load the directory size db for the current user and group(s)
+        This is done async in a thread since it can take 1-5 seconds
+        """
+        # Update the main thread that we are about to load
+        self.app.call_from_thread(lambda: self.query_one(MudusLoadingIndicator).show(True))
+        self.app.call_from_thread(self.set_db_message, "")
 
-            debug += f"\nNum dirs (combined): {len(dir_sizes.dir_sizes)}  - {dir_sizes.find_top_level_dir()}"
-            self.query_one("#mudus_debug").update(debug)
+        # Load the data
+        dir_sizes, reason_for_error = self.mudus_db.lookup_directory_sizes(
+            uid=self.user_id, gid=self.group_id
+        )
 
-        return dir_sizes
+        # Update the main thread that we are done loading
+        self.app.call_from_thread(lambda: self.query_one(MudusLoadingIndicator).show(False))
+        if reason_for_error:
+            self.app.call_from_thread(self.set_db_message, reason_for_error)
 
-    def show_disk_usage(self):
+        # Show the newly loaded data
+        self.app.call_from_thread(self.show_disk_usage, dir_sizes)
+
+    def show_disk_usage(self, dir_sizes: DirectorySizes):
         """
         Setup the initial view of the disk-usage table
         """
         # Update text above the table
         self.query_one("#mudus_table_title").update(
-            Text.from_markup(
-                f"Showing disk usage for user [bold]{self.user_name}[/]"
-                f" and group [bold]{self.group_name}[/]"
-            )
-        )
-        self.query_one("#mudus_db_message").update(
-            Text.from_markup(f"[dim italic]{self.mudus_db.message}[/]")
+            Text.from_markup(f"Showing {self.show_what_message}")
         )
 
         # Update the table contents
-        self.directory_sizes: DirectorySizes = self.get_directory_sizes()
+        self.directory_sizes: DirectorySizes = dir_sizes
         self.update_dir_size_table(directory_path=self.directory_sizes.top_level_dir)
 
     def update_dir_size_table(self, directory_path: str):
@@ -90,7 +112,7 @@ class MudusTable(Widget):
         Show the directory size information in the table for the given directory path.
         """
         table: DataTable = self.query_one("#mudus_table")
-        
+
         # Update the table header
         table: DataTable = self.query_one("#mudus_table")
         table.clear(columns=True)
@@ -130,9 +152,9 @@ class MudusTable(Widget):
             else:
                 # Show relative path for subdirectories
                 child_name = os.path.relpath(child, directory_path)
-                #self.query_one("#mudus_debug").update(
+                # self.query_one("#mudus_debug").update(
                 #    f"Showing sub-directories of {directory_path}",
-                #)
+                # )
             numfiles = dir_sizes.num_files.get(child, 0)
             table.add_row(
                 style_main_row_text(child_name, justify="left"),
