@@ -43,8 +43,18 @@ Example of the Textual-based TUI:
 
 ## Installation
 
-You can install and run mudus directly with `pipx mudus` or `uvx mudus` if you have `pipx` or `uv` installed. You can also use `pip install mudus` and launch it as `python -m mudus`.
+You can install and run mudus directly with `pipx run mudus` or `uvx mudus` if you have [pipx](https://pipx.pypa.io/) or [uv](https://docs.astral.sh/uv/) installed.
+Running `pipx install mudus` should make it available as `mudus` on the command line, or you can use `uv tool install mudus` if you would rather use `uv`.
 
+You can also use `pip install mudus` and launch it as `python -m mudus`. By creating a Python virtual environment for mudus you can make it available to all users on a system, maybe with an executable `/usr/bin/mudus` script like this:
+
+```bash
+#!/bin/bash
+
+source /path/to/virtual-environment/activate-script
+export MUDUS_DB_DIR="/something/shared/mudus-db-dir"
+python -m mudus "$@"
+```
 
 ## Alternatives
 
