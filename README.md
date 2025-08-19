@@ -72,6 +72,14 @@ The following items are on the `mudus` development roadmap:
 - [ ] **Partial update**: allow updating the database with a scan of only parts of the file system. Remember: the old contents of the scanned sub-directories must be subtracted from the existing database before the current contents can be added.
 
 
+## Releases
+
+* **Version 1.1 - Unreleased**
+  - *Addition of group view*: start the disk usage viewer and then press the `g` key to select a group. You can only select groups which you are a member of, otherwise you cannot open the disk usage database for the group.
+* **Version 1.0 - August 15, 2025**
+  - *Initial release*: version 1.0 with scan and view functionality
+
+
 ## License, Copyright, and Contributing
 
 The `mudus` software is (c) Tormod Landet, [DNV](https://www.dnv.com/maritime/advisory/), and released under an Apache 2.0 license. It was developed to help manage our internal HPC resources at DNV and is not an official DNV tool and comes with absolutely no warranty, support, or guarantees of any kind. Use at your own risk.
