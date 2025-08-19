@@ -1,9 +1,8 @@
 from pathlib import Path
 import json
-import grp
-import pwd
 
 from .directory_sizes import DirectorySizes
+from .users_and_groups import get_group_name, get_user_name
 
 
 class LazyLoadingDirectorySizes:
@@ -16,6 +15,7 @@ class LazyLoadingDirectorySizes:
         self.datafile: Path = datafile
         self.uid: int = uid
         self.gid: int = gid
+        self._is_accessible: bool | None = None
 
     def load(self) -> tuple[DirectorySizes | None, str]:
         """
@@ -39,17 +39,25 @@ class LazyLoadingDirectorySizes:
 
         # Construct a more easily understood reason for the error
         reason_for_error = f"Cannot load directory sizes: {reason_for_error}"
-        try:
-            username = repr(pwd.getpwuid(self.uid).pw_name)
-        except KeyError:
-            username = "**UNKNOWN USER**"
+        username = get_user_name(self.uid)
         reason_for_error += f"\n  Owner: {username} (UID={self.uid})"
 
-        try:
-            groupname = repr(grp.getgrgid(self.gid).gr_name)
-        except KeyError:
-            groupname = "**UNKNOWN GROUP**"
+        groupname = get_group_name(self.gid)
         reason_for_error += f"\n  Group: {groupname} (GID={self.gid})"
 
         reason_for_error += f"\n  Datafile: {self.datafile}"
         return None, reason_for_error
+
+    @property
+    def is_accessible(self) -> bool:
+        """
+        Can the current user read this datafile?
+        """
+        if self._is_accessible is None:
+            try:
+                # Try to open the file to check access
+                with self.datafile.open("r"):
+                    self._is_accessible = True
+            except PermissionError:
+                self._is_accessible = False
+        return self._is_accessible

@@ -1,7 +1,5 @@
 from typing import Literal, TypeAlias
 import os
-import pwd
-import grp
 
 from rich.text import Text
 from textual import work
@@ -9,41 +7,35 @@ from textual.widget import Widget
 from textual.containers import Vertical
 from textual.widgets import DataTable, Label
 
-from mudus.database import MudusDatabase, DirectorySizes
+from mudus.database import MudusDatabase, DirectorySizes, get_group_name, get_user_name
 from .mudus_loading_indicator import MudusLoadingIndicator
 
 IdOrAll: TypeAlias = int | Literal["all"]
 
 
 class MudusTable(Widget):
-    def __init__(self, mudus_db: MudusDatabase, user_id: int):
+    def __init__(self, mudus_db: MudusDatabase, user_id: IdOrAll, group_id: IdOrAll):
         super().__init__()
 
         self.mudus_db: MudusDatabase = mudus_db
         self.parent_dir: str | None = None
         self.highlighted_row: str | None = None
-        self.set_user_and_group(user_id=user_id, group_id="all")
+        self.set_user_and_group(user_id=user_id, group_id=group_id)
 
-    def set_user_and_group(self, user_id: int, group_id: IdOrAll):
+    def set_user_and_group(self, user_id: IdOrAll, group_id: IdOrAll):
         """
         Set the user ID and group ID for which to show the disk usage.
         """
-        self.user_id: int = user_id
+        self.user_id: IdOrAll = user_id
         self.group_id: IdOrAll = group_id
 
         if self.user_id != "all":
-            try:
-                self.user_name = pwd.getpwuid(self.user_id).pw_name
-            except KeyError:
-                self.user_name = "**UNKNOWN USER**"
+            self.user_name = get_user_name(self.user_id)
         else:
             self.user_name = "**ALL USERS**"
 
         if self.group_id != "all":
-            try:
-                self.group_name = grp.getgrgid(self.group_id).gr_name
-            except KeyError:
-                self.group_name = "**UNKNOWN GROUP**"
+            self.group_name = get_group_name(self.group_id)
         else:
             self.group_name = "**ALL GROUPS**"
 
@@ -131,7 +123,7 @@ class MudusTable(Widget):
             numfiles_parent = dir_sizes.num_files.get(parent_dir, 0)
             table.add_row(
                 Text.from_markup("[italic]..    (parent directory)[/]"),
-                Text.from_markup(f"[italic]{size_parent / 1024**3:.2f}[/]", justify="right"),
+                Text.from_markup(f"[italic]{size_parent / 1024**3:,.2f}[/]", justify="right"),
                 Text.from_markup(f"[italic]{numfiles_parent:,d}[/]", justify="right"),
                 key=parent_dir,
             )
@@ -158,7 +150,7 @@ class MudusTable(Widget):
             numfiles = dir_sizes.num_files.get(child, 0)
             table.add_row(
                 style_main_row_text(child_name, justify="left"),
-                style_main_row_text(f"{size / 1024**3:.2f}", justify="right"),
+                style_main_row_text(f"{size / 1024**3:,.2f}", justify="right"),
                 style_main_row_text(f"{numfiles:,d}", justify="right"),
                 key=child,  # Use the full path as the key
             )
@@ -173,19 +165,19 @@ class MudusTable(Widget):
         size_overall = dir_sizes.total_size
         table.add_row(
             Text.from_markup("[italic]TOTAL here (files)[/]"),
-            Text.from_markup(f"[italic]{size_files_in_this_dir / 1024**3:.2f}[/]", justify="right"),
+            Text.from_markup(f"[italic]{size_files_in_this_dir / 1024**3:,.2f}[/]", justify="right"),
             Text.from_markup(f"[italic]{numfiles_in_this_dir:,d}[/]", justify="right"),
             key="TOTAL_THIS_DIR_FILES",
         )
         table.add_row(
             Text.from_markup("[italic]TOTAL here (recursive)[/]"),
-            Text.from_markup(f"[italic]{size_this_dir / 1024**3:.2f}[/]", justify="right"),
+            Text.from_markup(f"[italic]{size_this_dir / 1024**3:,.2f}[/]", justify="right"),
             Text.from_markup(f"[italic]{numfiles_this_dir:,d}[/]", justify="right"),
             key="TOTAL_THIS_DIR_CUMULATIVE",
         )
         table.add_row(
             Text.from_markup("[italic]TOTAL[/]"),
-            Text.from_markup(f"[italic]{size_overall / 1024**3:.2f}[/]", justify="right"),
+            Text.from_markup(f"[italic]{size_overall / 1024**3:,.2f}[/]", justify="right"),
             "",
             key="TOTAL_OVERALL_USER",
         )

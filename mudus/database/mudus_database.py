@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, TypeAlias
 from pathlib import Path
 from enum import Enum
 import datetime as dt
@@ -12,6 +12,9 @@ from .accumulate import accumulate_directory_sizes
 
 METADATA_FILE_NAME = "scan_metadata.json"
 CUMULATIVE_DIR_NAME = "cumulative_by_uid_gid"
+CUMULATIVE_FILE_PREFIX = "cumulative_dir_sizes_for"
+
+IdOrAll: TypeAlias = int | Literal["all"]
 
 
 class ScanningMethod(Enum):
@@ -46,10 +49,25 @@ class MudusDatabase:
             tuple[int, int], DirectorySizes | LazyLoadingDirectorySizes
         ] = {}
 
+        #: When did the last file system scan stored in this database start
         self.scanning_start_time: dt.datetime
+
+        #: When did the last cumulative dataset in this database start getting made
         self.accumulation_start_time: dt.datetime
+
+        #: When did the last file system scan stored in this database complete
         self.scanning_end_time: dt.datetime
+
+        #: How long did the last file system scan take (scanning + accumulation)
         self.scanning_duration: float = 0.0
+
+        #: Tuples of (uid, gid) that are accessible to the current user (can read)
+        #: (you must call mark_accessible() to make this available after opening the database)
+        self.accessible_data: set[tuple[int, int]] = set()
+
+        #: Tuples of (uid, gid) that are inaccessible to the current user (cannot read)
+        #: (you must call mark_accessible() to make this available after opening the database)
+        self.inaccessible_data: set[tuple[int, int]] = set()
 
     def load_database(self):
         """
@@ -58,7 +76,7 @@ class MudusDatabase:
         """
         # Load the scan results (only cumulative results)
         result_storage_dir = self.db_directory / CUMULATIVE_DIR_NAME
-        for file in result_storage_dir.glob("cumulative_dir_sizes_for_uid_*.json"):
+        for file in result_storage_dir.glob(f"{CUMULATIVE_FILE_PREFIX}_*.json"):
             uid, gid = parse_uid_and_gid_from_filename(file.name)
             if uid is None or gid is None:
                 continue
@@ -91,7 +109,7 @@ class MudusDatabase:
         # Delete old database contents. We must prevent that user-group combinations that once
         # were present on the file system will remain when they are no longer present since the
         # file will not be overwritten if there is no new data.
-        for file in result_storage_dir.glob("cumulative_dir_sizes_for_uid_*.json"):
+        for file in result_storage_dir.glob(f"{CUMULATIVE_FILE_PREFIX}_*.json"):
             # Will this file be overwritten by the code below?
             uid, gid = parse_uid_and_gid_from_filename(file.name)
             if (uid, gid) in self.cumulative_results:
@@ -114,7 +132,7 @@ class MudusDatabase:
             if isinstance(dirsize, LazyLoadingDirectorySizes):
                 raise ValueError("ERROR: cannot save a database that is not a fresh scan!")
 
-            filename = result_storage_dir / f"cumulative_dir_sizes_for_uid_{uid}_gid_{gid}.json"
+            filename = result_storage_dir / f"{CUMULATIVE_FILE_PREFIX}_uid_{uid}_gid_{gid}.json"
             try:
                 delete_file = True
                 if self.non_root_mode:
@@ -174,9 +192,31 @@ class MudusDatabase:
         with open(self.db_directory / METADATA_FILE_NAME, "w") as f:
             json.dump(metadata, f)
 
-    def lookup_directory_sizes(
-        self, uid: int, gid: int | Literal["all"]
-    ) -> tuple[DirectorySizes, str]:
+    def mark_accessible(self) -> tuple[set[tuple[int, int]], set[tuple[int, int]]]:
+        """
+        Mark accessible and inaccessible datasets in the database.
+
+        As a normal user you cannot get the data for all directories on the system,
+        only for those who you own yourself or are owned by a group you belong to.
+
+        Here we mark database contents not as accessible or inaccessible by you or
+        your groups. Returns a tuple of (accessible, inaccessible) datasets.
+        """
+
+        for (uid, gid), dirsize in list(self.cumulative_results.items()):
+            if isinstance(dirsize, LazyLoadingDirectorySizes):
+                # Not loaded yet, check if it is accessible
+                if dirsize.is_accessible:
+                    self.accessible_data.add((uid, gid))
+                else:
+                    self.inaccessible_data.add((uid, gid))
+            else:
+                # Already loaded, must be accessible!
+                self.accessible_data.add((uid, gid))
+
+        return self.accessible_data, self.inaccessible_data
+
+    def lookup_directory_sizes(self, uid: IdOrAll, gid: IdOrAll) -> tuple[DirectorySizes, str]:
         """
         Lookup the directory sizes for a given user ID and group ID.
         If gid is "all", return the sizes for all groups of the user.
@@ -184,21 +224,28 @@ class MudusDatabase:
         """
         result = DirectorySizes.empty()
 
-        # The group IDs to look up
-        gids = set()
-        if gid == "all":
+        # The user IDs to look up
+        to_lookup: set[tuple[int, int]] = set()
+        if uid == "all":
+            # Find all user IDs for the user in the database
+            assert isinstance(gid, int), "If uid is 'all', gid must be an integer"
+            for db_uid, db_gid in self.cumulative_results:
+                if db_gid == gid:
+                    to_lookup.add((db_uid, db_gid))
+        elif gid == "all":
             # Find all group IDs for the user in the database
+            assert isinstance(uid, int), "If gid is 'all', uid must be an integer"
             for db_uid, db_gid in self.cumulative_results:
                 if db_uid == uid:
-                    gids.add(db_gid)
-        elif (uid, gid) in self.cumulative_results:
-            gids = {gid}
+                    to_lookup.add((db_uid, db_gid))
+        elif (uid, uid) in self.cumulative_results:
+            to_lookup.add((uid, uid))
         else:
             return result, "No data found"
 
         # Accumulate the directory sizes for all requested groups
         loading_error = ""
-        for gid in gids:
+        for uid, gid in to_lookup:
             dirsize = self.cumulative_results[(uid, gid)]
 
             # Handle lazy-loading
@@ -290,7 +337,7 @@ def parse_uid_and_gid_from_filename(filename: str) -> tuple[int | None, int | No
     And return the two integers uid and gid.
     Returns None for both if the file name is not parsable.
     """
-    if not filename.startswith("cumulative_dir_sizes_for_uid_") or not filename.endswith(".json"):
+    if not filename.startswith(CUMULATIVE_FILE_PREFIX) or not filename.endswith(".json"):
         return None, None
 
     # Split into list ["cumulative", "dir", "sizes", "for", "uid", UID, "gid", GID]

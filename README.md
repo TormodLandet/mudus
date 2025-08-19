@@ -65,7 +65,7 @@ There are many great alternatives to `mudus` if you are on a single-user system,
 
 The following items are on the `mudus` development roadmap:
 
-- [ ] **Show group instead of user**: You may want to see the disk usage for a given group instead of a given user. This should be a relatively small addition.
+- [x] **Show group instead of user**: You may want to see the disk usage for a given group instead of a given user. This should be a relatively small addition.
 
 - [ ] **Deeper file-system integration**: `mudus` has support for pluggable disk scanners. Currently, the Python `scandir` method is the only implementation, but deeper integration into relevant file systems (BeeGFS Hive?) may speed up the file-system scan and reduce the load on metadata servers, etc.
 
